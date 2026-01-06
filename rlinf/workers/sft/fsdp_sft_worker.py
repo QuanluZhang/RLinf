@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import os
 
 import jax
@@ -49,7 +50,7 @@ class FSDPSftWorker(FSDPModelManager, Worker):
 
         self._component_placement = HybridComponentPlacement(cfg, Cluster())
         self.data_loader, self.data_config = self.build_dataloader()
-        self.data_iter = iter(self.data_loader)
+        self.data_iter = None  # Will be initialized in run_training
 
     def init_worker(self):
         self.setup_model_and_optimizer()
@@ -70,13 +71,57 @@ class FSDPSftWorker(FSDPModelManager, Worker):
 
             from rlinf.models.embodiment.openpi.dataconfig import get_openpi_config
 
+            # Get config name from openpi config or default to pi05_b1k
+            config_name = self.cfg.actor.model.openpi.get("config_name", "pi05_b1k")
+            
+            # Override config with RLinf config values if provided
             config = get_openpi_config(
-                self.cfg.actor.model.openpi.config_name,
+                config_name,
                 model_path=self.cfg.actor.model.model_path,
                 batch_size=self.cfg.actor.micro_batch_size * self._world_size,
             )
-            data_loader = openpi_data_loader.create_data_loader(
-                config, framework="pytorch", shuffle=True
+            
+            # Override data config with RLinf config values
+            behavior_dataset_root = self.cfg.actor.model.openpi.get("behavior_dataset_root", None)
+            if behavior_dataset_root is not None:
+                # Update base_config with behavior_dataset_root
+                base_config = config.data.base_config
+                if base_config is None:
+                    from openpi.training.config import DataConfig
+                    base_config = DataConfig()
+                base_config = dataclasses.replace(
+                    base_config,
+                    behavior_dataset_root=behavior_dataset_root,
+                )
+                tasks = self.cfg.actor.model.openpi.get("tasks", None)
+                if tasks is not None:
+                    base_config = dataclasses.replace(
+                        base_config, tasks=tasks
+                    )
+                fine_grained_level = self.cfg.actor.model.openpi.get("fine_grained_level", None)
+                if fine_grained_level is not None:
+                    base_config = dataclasses.replace(
+                        base_config,
+                        fine_grained_level=fine_grained_level,
+                    )
+                config = dataclasses.replace(
+                    config, data=dataclasses.replace(config.data, base_config=base_config)
+                )
+            
+            # Set assets_dirs if not set
+            if not hasattr(config, "assets_dirs") or config.assets_dirs is None:
+                import pathlib
+                config = dataclasses.replace(
+                    config, assets_dirs=pathlib.Path(self.cfg.actor.model.model_path)
+                )
+            
+            data_loader = openpi_data_loader.create_torch_behavior_data_loader(
+                config,
+                action_horizon=config.model.action_horizon,
+                batch_size=self.cfg.actor.micro_batch_size * self._world_size,
+                shuffle=True,
+                num_workers=self.cfg.data.get("num_workers", 8),
+                seed=self.cfg.actor.get("seed", 42),
             )
             return data_loader, data_loader.data_config()
         else:
@@ -108,13 +153,22 @@ class FSDPSftWorker(FSDPModelManager, Worker):
             )
 
             metrics = {}
+            
+            # Initialize or reset iterator if needed
+            if self.data_iter is None:
+                self.data_iter = iter(self.data_loader)
 
             for idx in range(self.gradient_accumulation):
                 backward_ctx = self.before_micro_batch(
                     self.model,
                     is_last_micro_batch=(idx + 1) == self.gradient_accumulation,
                 )
-                observation, actions = next(self.data_iter)
+                try:
+                    observation, actions = next(self.data_iter)
+                except StopIteration:
+                    # Reset iterator if exhausted
+                    self.data_iter = iter(self.data_loader)
+                    observation, actions = next(self.data_iter)
 
                 observation = jax.tree.map(
                     lambda x: torch.as_tensor(x, device=self.device)

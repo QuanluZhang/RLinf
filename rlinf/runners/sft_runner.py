@@ -65,24 +65,11 @@ class SFTRunner:
         self.actor.load_checkpoint(actor_checkpoint_path).wait()
         self.global_step = int(resume_dir.split("global_step_")[-1])
 
-    def _sync_weights(self) -> None:
-        rollout_handle: Handle = self.rollout.sync_model_from_actor()
-        actor_handle: Handle = self.actor.sync_model_to_rollout()
-        actor_handle.wait()
-        rollout_handle.wait()
-
     def evaluate(self) -> dict[str, float]:
-        env_handle: Handle = self.env.evaluate(
-            input_channel=self.rollout_channel, output_channel=self.env_channel
-        )
-        rollout_handle: Handle = self.rollout.evaluate(
-            input_channel=self.env_channel, output_channel=self.rollout_channel
-        )
-        env_results = env_handle.wait()
-        rollout_handle.wait()
-        eval_metrics_list = [results for results in env_results if results is not None]
-        eval_metrics = compute_evaluate_metrics(eval_metrics_list)
-        return eval_metrics
+        """Run evaluation on validation set if available."""
+        # For SFT, evaluation can be done by running inference on validation set
+        # This is a placeholder - can be extended later
+        return {}
 
     def run(self) -> None:
         start_step = self.global_step
@@ -96,11 +83,22 @@ class SFTRunner:
             # set global step
             self.actor.set_global_step(self.global_step)
 
-            # RL Training
+            # SFT Training
             with self.timer("step"):
                 # Actor training.
                 actor_handle: Handle = self.actor.run_training()
                 actor_metrics = actor_handle.wait()
+                
+                # Evaluation
+                eval_metrics = {}
+                if (
+                    _step % self.cfg.runner.val_check_interval == 0
+                    and self.cfg.runner.val_check_interval > 0
+                ):
+                    with self.timer("eval"):
+                        eval_metrics = self.evaluate()
+                        eval_metrics = {f"eval/{k}": v for k, v in eval_metrics.items()}
+                        self.metric_logger.log(data=eval_metrics, step=_step)
 
                 self.global_step += 1
 
@@ -119,12 +117,19 @@ class SFTRunner:
             time_metrics = self.timer.consume_durations()
             time_metrics["training"] = actor_handle.consume_duration()
             time_metrics = {f"time/{k}": v for k, v in time_metrics.items()}
-            training_metrics = {f"train/{k}": v for k, v in actor_metrics[0].items()}
+            # Handle both dict and list return types
+            if isinstance(actor_metrics, list) and len(actor_metrics) > 0:
+                training_metrics = {f"train/{k}": v for k, v in actor_metrics[0].items()}
+            elif isinstance(actor_metrics, dict):
+                training_metrics = {f"train/{k}": v for k, v in actor_metrics.items()}
+            else:
+                training_metrics = {}
             self.metric_logger.log(time_metrics, _step)
             self.metric_logger.log(training_metrics, _step)
 
             logging_metrics = time_metrics
             logging_metrics.update(training_metrics)
+            logging_metrics.update(eval_metrics)
 
             global_pbar.set_postfix(logging_metrics, refresh=False)
             global_pbar.update(1)

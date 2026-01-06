@@ -1,0 +1,90 @@
+defaults:
+  - override hydra/job_logging: stdout
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+
+cluster:
+  num_nodes: 1
+  component_placement:
+    actor: all
+
+runner:
+  task_type: embodied
+  logger:
+    log_path: "../results"
+    project_name: rlinf
+    experiment_name: "behavior_sft_pi05"
+    logger_backends: ["tensorboard"] # wandb, swanlab
+
+  max_epochs: 100
+  max_steps: 20000  # Override max_epochs if set
+
+  val_check_interval: 1000  # Run validation every N steps
+  save_interval: 2000  # Save checkpoint every N steps
+
+data:
+  num_workers: 8  # Data loader workers
+
+actor:
+  group_name: "ActorGroup"
+  training_backend: "fsdp"
+  checkpoint_load_path: "/path/to/model/openpi"  # Path to pretrained pi0.5 checkpoint
+  checkpoint_save_path: "../results"
+  micro_batch_size: 32
+  global_batch_size: 256  # Total batch size across all GPUs
+  seed: 42
+  enable_offload: False
+
+  model:
+    model_type: "openpi"
+    model_path: "/path/to/model/openpi"  # Path to pretrained pi0.5 checkpoint
+    precision: null
+    num_action_chunks: 5  # Interface for the env
+    action_dim: 23  # Behavior action dimension
+    action_horizon: 32  # Action horizon
+    is_lora: False
+    lora_rank: 32
+    gradient_checkpointing: False
+    use_wrist_image: True
+    use_proprio: True
+    num_steps: 3
+    sharding_strategy: "no_shard"
+    # openpi specific parameters
+    openpi:
+      config_name: "pi05_b1k"  # Config name from dataconfig
+      behavior_dataset_root: "../../DATASETS/behavior/2025-challenge-demos"  # Path to behavior dataset
+      tasks: ["turning_on_radio"]  # List of tasks to train on
+      fine_grained_level: 0  # Fine-grained level: 0, 1, 2
+      noise_level: 0.5
+      action_chunk: ${actor.model.num_action_chunks}
+      num_steps: ${actor.model.num_steps}
+      train_expert_only: True  # Freeze VLM, only train expert
+      action_env_dim: ${actor.model.action_dim}
+      noise_method: "flow_sde"
+      add_value_head: False
+      pi05: True  # Use pi0.5 model
+      value_after_vlm: False
+      value_vlm_mode: "mean_token"
+
+  optim:
+    lr: 2.5e-6  # Learning rate for SFT
+    value_lr: 1.0e-4  # Not used for SFT but required
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    adam_eps: 1.0e-05
+    clip_grad: 1.0
+
+  fsdp_config:
+    sharding_strategy: "FULL_SHARD"  # FULL_SHARD, SHARD_GRAD_OP, NO_SHARD
+    mixed_precision:
+      param_dtype: "bfloat16"
+      reduce_dtype: "bfloat16"
+      buffer_dtype: "float32"
+    use_orig_params: True
+    limit_all_gathers: True
+    forward_prefetch: False
+    backward_prefetch: "BACKWARD_PRE"
+

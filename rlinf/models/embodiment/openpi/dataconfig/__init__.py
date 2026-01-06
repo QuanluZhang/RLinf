@@ -44,6 +44,9 @@ from rlinf.models.embodiment.openpi.dataconfig.metaworld_dataconfig import (
 from rlinf.models.embodiment.openpi.dataconfig.robocasa_dataconfig import (
     LeRobotRobocasaDataConfig,
 )
+from rlinf.models.embodiment.openpi.dataconfig.behavior_dataconfig import (
+    LeRobotB1KDataConfig,
+)
 from rlinf.models.embodiment.openpi.dataconfig.robotwin_aloha_dataconfig import (
     LeRobotAlohaDataConfig,
 )
@@ -236,6 +239,35 @@ _CONFIGS = [
             action_train_with_rotation_6d=False,  # User can add extra config in custom dataset
         ),
         pytorch_weight_path="checkpoints/torch/pi0_base",
+    ),
+    TrainConfig(
+        name="pi05_b1k",
+        model=pi0_config.Pi0Config(
+            pi05=True, action_horizon=32, discrete_state_input=False
+        ),
+        data=LeRobotB1KDataConfig(
+            repo_id="behavior-1k/2025-challenge-demos",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                behavior_dataset_root="../DATASETS/behavior/2025-challenge-demos",
+                tasks=["turning_on_radio"],
+                fine_grained_level=0,
+            ),
+            assets=AssetsConfig(assets_dir="checkpoints/torch/pi05_b1k/assets"),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "checkpoints/jax/pi05_base/params"
+        ),
+        pytorch_weight_path="checkpoints/torch/pi05_base",
+        batch_size=256,
+        num_workers=8,
+        num_train_steps=20_000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            peak_lr=2.5e-6,
+            decay_steps=20_000,
+        ),
+        freeze_filter=pi0_config.Pi0Config(pi05=True, action_horizon=32).get_freeze_filter(),
+        ema_decay=None,
     ),
 ]
 
