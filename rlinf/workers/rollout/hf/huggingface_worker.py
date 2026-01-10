@@ -174,6 +174,7 @@ class MultiStepRolloutWorker(Worker):
         param_state_dict = await self.recv(
             self.actor_group_name, src_rank=self.actor_weight_src_rank, async_op=True
         ).async_wait()
+        param_state_dict = {k: v.to(self.device) for k, v in param_state_dict.items()}
 
         self.hf_model.load_state_dict(param_state_dict)
         del param_state_dict
