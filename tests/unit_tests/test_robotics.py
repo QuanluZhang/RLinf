@@ -47,6 +47,8 @@ from rlinf.robotics import (
     EndEffector,
     FrankaRobot,
     GimArmConfig,
+    LeKiwiConfig,
+    LeKiwiRobot,
     LegacyObservationAdapter,
     MethodArm,
     MethodEndEffector,
@@ -483,6 +485,7 @@ def test_all_builtin_configs_construct_from_a_node_rank_alone():
     configs = [
         GimArmConfig(node_rank=0),
         DOSW1RobotConfig(node_rank=0),
+        LeKiwiConfig(node_rank=0),
         Turtle2Config(node_rank=0),
     ]
 
@@ -3997,6 +4000,10 @@ def test_every_shipped_robot_runs_on_faked_sdks():
             "is_dummy": False,
             "gripper_width_max": 0.08,
         },
+        "LeKiwi": {
+            "node_rank": 0,
+            "port": "/dev/ttyACM0",
+        },
     }
     with mocked_sdks():
         import rlinf.robotics.robots  # noqa: F401
@@ -4004,6 +4011,53 @@ def test_every_shipped_robot_runs_on_faked_sdks():
         failed = [name for name, args in robots.items() if check(name, args) != 0]
 
     assert failed == []
+
+
+def test_lekiwi_base_drives_and_reads_back_velocity():
+    from robot_mocks import mocked_sdks
+
+    with mocked_sdks() as made:
+        from rlinf.robotics.parts.mobility import LeKiwiBase
+
+        base = LeKiwiBase("/dev/ttyACM0")
+        assert base.observation_features == {
+            "velocity": {"shape": (3,), "dtype": "float32"}
+        }
+        assert base.action_features == base.observation_features
+
+        base.connect()
+        try:
+            # The base starts at rest.
+            np.testing.assert_allclose(
+                base.get_observation()["velocity"], [0.0, 0.0, 0.0], atol=1e-6
+            )
+
+            # A forward command round-trips through the wheel kinematics.
+            applied = base.send_action(
+                {"velocity": np.array([0.1, 0.0, 0.0], dtype=np.float32)}
+            )
+            np.testing.assert_allclose(applied["velocity"], [0.1, 0.0, 0.0], atol=0.02)
+            np.testing.assert_allclose(
+                base.get_observation()["velocity"], [0.1, 0.0, 0.0], atol=0.02
+            )
+
+            # Lateral and spin round-trip together, in one command.
+            base.send_action({"velocity": np.array([0.0, 0.1, 30.0], dtype=np.float32)})
+            np.testing.assert_allclose(
+                base.get_observation()["velocity"], [0.0, 0.1, 30.0], atol=0.3
+            )
+
+            # reset() stops the base.
+            base.reset()
+            np.testing.assert_allclose(
+                base.get_observation()["velocity"], [0.0, 0.0, 0.0], atol=1e-6
+            )
+        finally:
+            base.disconnect()
+
+        bus = made["lerobot.motors.feetech"].FeetechMotorsBus.instances[-1]
+        assert not bus.is_connected
+        assert bus.disable_calls >= 1, "release must drop torque"
 
 
 def test_a_worker_installs_the_fakes_for_itself():

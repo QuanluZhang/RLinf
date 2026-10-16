@@ -2,6 +2,8 @@
 
 ## Find Port
 
+Install lerobot first following the doc `https://huggingface.co/docs/lerobot/main/en/installation#from-source`. Note, in raspberry pi 5, lerobot v0.5.1 has been tested; in macos, lerobot v0.6.1 has been tested.
+
 First find the port of the motor controller with `lerobot-find-port`.
 https://huggingface.co/docs/lerobot/main/en/lekiwi?example=Mac#find-the-usb-ports-associated-with-motor-board
 

@@ -15,5 +15,6 @@
 """Interfaces and drivers for mobile robot bases."""
 
 from .base import MobileBase
+from .lekiwi import LeKiwiBase
 
-__all__ = ["MobileBase"]
+__all__ = ["LeKiwiBase", "MobileBase"]
