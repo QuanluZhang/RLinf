@@ -88,6 +88,55 @@ commands from reaching the motors; this script does not add a motor-side watchdo
 Use the servo power switch if communication is lost. Run only one motor-control
 program on the USB port at a time.
 
+## Drive the mobile base from another computer
+
+`teleoperate_base.py` reads the keyboard on the machine that owns the USB port.
+When that machine has no local keyboard — for example over SSH from a Mac to the
+Raspberry Pi — use `teleoperate_send_receiver.py`, which splits the same control
+loop across a TCP link:
+
+- `receiver` runs on the machine wired to the motors (the Pi) and sends the wheel
+  commands.
+- `sender` runs on the machine with the keyboard (the Mac), captures the held
+  W/A/S/D/Z/X keys, and streams them to the receiver.
+
+The key mapping and speed levels are the same as `teleoperate_base.py` above.
+Start the receiver first, then the sender:
+
+```bash
+# On the Pi, wired to the motors:
+python teleoperate_send_receiver.py receiver --port /dev/ttyACM0
+
+# On the Mac, where the keyboard is:
+python teleoperate_send_receiver.py sender --host <pi-ip>
+```
+
+Both sides default to port `5555`; change it with `--listen-port` on the receiver
+and `--port` on the sender. The receiver takes the same `--fps`, `--wheel-radius`,
+`--base-radius`, and `--max-raw` options as the local script, and `--dry-run`
+previews wheel commands without opening the motor port. `--connect-timeout` sets
+how long the sender keeps retrying the connection.
+
+The receiver has a heartbeat watchdog: if the sender stops sending — it is
+killed, the network drops, or the Mac sleeps — the receiver zeroes the wheel
+velocities and waits for a new sender. Quit the receiver with Q or Esc as usual;
+stop the sender with Ctrl+C (it also exits on its own once the receiver closes).
+
+Both machines must reach the receiver port over the network. If the Pi cannot
+reach the Mac directly, tunnel the connection back through the SSH session:
+
+```bash
+# On the Mac, open a tunnel (keep it open while streaming):
+ssh -R 5555:localhost:5555 myrobots@<pi-ip>
+
+# On the Pi, point the sender at the tunnel's loopback:
+python teleoperate_send_receiver.py sender --host 127.0.0.1
+```
+
+If you change the port, keep the receiver's `--listen-port`, the sender's
+`--port`, and the tunnel consistent. Run only one motor-control program on the
+USB port at a time.
+
 ## Verify the keyboard script without hardware
 
 From the RLinf repository root, run:
