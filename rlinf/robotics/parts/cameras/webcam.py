@@ -23,6 +23,9 @@ that. Depth is not available from a single colour webcam.
 
 from __future__ import annotations
 
+import glob
+import os
+import sys
 from typing import Any, Optional, Union
 
 import numpy as np
@@ -98,11 +101,18 @@ class WebcamCamera(BaseCamera):
 
     @classmethod
     def discover(cls) -> set[str]:
-        """Return device indices for webcams that open on this node."""
-        try:
-            import cv2
-        except ImportError:
-            return set()
+        """Return device identifiers for webcams attached to this node.
+
+        On Linux the camera is a V4L2 ``/dev/videoN`` node, which is not always
+        ``/dev/video0`` after a device is re-enumerated, so list the nodes
+        directly rather than probing index 0..7. Elsewhere, fall back to
+        probing a small range of device indices.
+        """
+        if sys.platform.startswith("linux"):
+            devices = glob.glob("/dev/v4l/by-id/*") or glob.glob("/dev/video*")
+            return {os.path.basename(device) for device in devices}
+        import cv2
+
         found: set[str] = set()
         for index in range(8):
             capture = cv2.VideoCapture(index)
