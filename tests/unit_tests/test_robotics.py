@@ -47,9 +47,9 @@ from rlinf.robotics import (
     EndEffector,
     FrankaRobot,
     GimArmConfig,
+    LegacyObservationAdapter,
     LeKiwiConfig,
     LeKiwiRobot,
-    LegacyObservationAdapter,
     MethodArm,
     MethodEndEffector,
     PartGroup,
@@ -3990,6 +3990,7 @@ def test_the_bench_check_runs_a_whole_robot_on_fakes():
 def test_every_shipped_robot_runs_on_faked_sdks():
     from robot_mocks import mocked_sdks
 
+    from rlinf.robotics.parts.cameras import CameraInfo
     from toolkits.realworld_check.check_robot_parts import check
 
     robots = {
@@ -4031,6 +4032,15 @@ def test_every_shipped_robot_runs_on_faked_sdks():
         "LeKiwi": {
             "node_rank": 0,
             "port": "/dev/ttyACM0",
+            "cameras": {
+                "front": CameraInfo(
+                    name="front",
+                    serial_number="0",
+                    camera_type="webcam",
+                    resolution=(64, 48),
+                    fps=5,
+                )
+            },
         },
     }
     with mocked_sdks():
@@ -4086,6 +4096,41 @@ def test_lekiwi_base_drives_and_reads_back_velocity():
         bus = made["lerobot.motors.feetech"].FeetechMotorsBus.instances[-1]
         assert not bus.is_connected
         assert bus.disable_calls >= 1, "release must drop torque"
+
+
+@pytest.mark.placement
+def test_lekiwi_composes_its_webcam_beside_the_base():
+    from robot_mocks import mocked_sdks
+
+    with mocked_sdks():
+        from rlinf.robotics.parts.cameras import BaseCamera, CameraInfo
+
+        robot = LeKiwiRobot.build(
+            port="/dev/ttyACM0",
+            node_rank=0,
+            cameras={
+                "front": CameraInfo(
+                    name="front",
+                    serial_number="0",
+                    camera_type="webcam",
+                    resolution=(64, 48),
+                    fps=5,
+                )
+            },
+        )
+
+        # The camera joins the base as a sibling part, by name.
+        cameras = robot.parts_of_type(BaseCamera)
+        assert list(cameras) == ["front"]
+
+        robot.connect()
+        try:
+            frame = cameras["front"].get_observation()["frame"]
+            assert frame.shape == (48, 64, 3)
+            assert frame.dtype == np.uint8
+        finally:
+            robot.disconnect()
+        assert not cameras["front"].is_connected
 
 
 def test_a_worker_installs_the_fakes_for_itself():
