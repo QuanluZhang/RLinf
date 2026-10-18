@@ -3661,6 +3661,34 @@ def test_a_real_camera_runs_against_a_faked_sdk():
         assert not camera.is_connected
 
 
+def test_a_webcam_runs_against_a_faked_sdk():
+    from robot_mocks import mocked_sdks
+
+    with mocked_sdks():
+        from rlinf.robotics.parts.cameras.base import CameraInfo
+        from rlinf.robotics.parts.cameras.webcam import WebcamCamera
+
+        camera = WebcamCamera(
+            CameraInfo(
+                name="webcam",
+                serial_number="0",
+                camera_type="webcam",
+                fps=10,
+                resolution=(64, 48),
+            )
+        )
+        assert not camera.is_connected
+        camera.connect()
+        assert camera.is_connected
+
+        frame = camera.get_observation()["frame"]
+        assert frame.shape == (48, 64, 3)
+        assert frame.dtype == np.uint8
+
+        camera.disconnect()
+        assert not camera.is_connected
+
+
 def test_a_real_arm_runs_against_a_faked_sdk():
     from robot_mocks import mocked_sdks
 
