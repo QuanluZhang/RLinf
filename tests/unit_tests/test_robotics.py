@@ -3689,6 +3689,43 @@ def test_a_webcam_runs_against_a_faked_sdk():
         assert not camera.is_connected
 
 
+def test_a_webcam_opens_a_by_id_serial_from_discover(monkeypatch):
+    from robot_mocks import mocked_sdks
+
+    with mocked_sdks() as made:
+        from rlinf.robotics.parts.cameras.base import CameraInfo
+        from rlinf.robotics.parts.cameras.webcam import WebcamCamera
+
+        # A basename from WebcamCamera.discover() on Linux, where /dev/v4l
+        # nodes are not stable and detection reports by-id names.
+        basename = "usb-USB_Camera_USB_Camera_2505280051-video-index0"
+        by_id = f"/dev/v4l/by-id/{basename}"
+
+        def exists(path, _real=os.path.exists):
+            return path == by_id or _real(path)
+
+        monkeypatch.setattr(os.path, "exists", exists)
+
+        camera = WebcamCamera(
+            CameraInfo(
+                name="webcam",
+                serial_number=basename,
+                camera_type="webcam",
+                fps=10,
+                resolution=(64, 48),
+            )
+        )
+        camera.connect()
+        try:
+            frame = camera.get_observation()["frame"]
+            assert frame.shape == (48, 64, 3)
+        finally:
+            camera.disconnect()
+        # The by-id basename must reach cv2 as a full device path, not the
+        # bare name, which would fail to open on the robot.
+        assert made["cv2"].opens == [by_id]
+
+
 def test_a_real_arm_runs_against_a_faked_sdk():
     from robot_mocks import mocked_sdks
 

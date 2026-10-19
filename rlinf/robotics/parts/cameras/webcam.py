@@ -41,6 +41,7 @@ class WebcamCamera(BaseCamera):
 
     * a numeric string or int interpreted as the device index
     * a ``"videoN"`` shorthand resolved to ``/dev/videoN`` (Linux)
+    * a ``/dev/v4l/by-id/`` basename, as reported by :meth:`discover`
     * a full device path such as ``/dev/video0`` or ``/dev/v4l/by-id/...``
     """
 
@@ -80,6 +81,9 @@ class WebcamCamera(BaseCamera):
             return int(serial_number)
         if serial_number.startswith("video"):
             return f"/dev/{serial_number}"
+        by_id = f"/dev/v4l/by-id/{serial_number}"
+        if os.path.exists(by_id):
+            return by_id
         return serial_number
 
     def _read_frame(self) -> tuple[bool, Optional[np.ndarray]]:
