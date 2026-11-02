@@ -1775,6 +1775,14 @@ def adv_requires_group_baseline(
 
 
 def validate_cfg(cfg: DictConfig) -> DictConfig:
+    # TODO(agent): MODELOPT-PROPOSAL C1 (comments only).
+    # Validate optional actor.precision / rollout.precision before workers start:
+    # prepared_checkpoint, resume_checkpoint_dir, recipe_path, real_forward.
+    # Check matching actor/rollout recipes, dependency versions, GPU/kernel
+    # coverage and incompatible checkpoint inputs; leave user settings read-only.
+    # Execution precision is separate from model storage/FSDP communication
+    # dtype. Do not add fp4 as an ordinary global model dtype or combine ModelOpt
+    # quantization with active TE low-precision autocast on the same modules.
     OmegaConf.set_struct(cfg, True)
 
     with open_dict(cfg):

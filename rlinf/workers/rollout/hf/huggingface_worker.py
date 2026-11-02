@@ -160,6 +160,14 @@ class MultiStepRolloutWorker(Worker):
 
         self.hf_model: BasePolicy = get_model(rollout_model_config)
 
+        # TODO(agent): MODELOPT-PROPOSAL R1 (comments only).
+        # Before eval(), torch.compile or CUDA graph capture:
+        # precision = ModelOptAdapter()  # lazy optional import
+        # self.hf_model = precision.restore_prepared(
+        #     self.hf_model, rollout_precision.prepared_checkpoint)
+        # Use the actor's prepared recipe/scales initially; handle resumed and
+        # eval-only checkpoints explicitly and reject ambiguous ckpt_path input.
+
         if self.cfg.runner.get("ckpt_path", None):
             model_dict = torch.load(self.cfg.runner.ckpt_path)
             self.hf_model.load_state_dict(model_dict)
@@ -679,6 +687,13 @@ class MultiStepRolloutWorker(Worker):
             )
 
         applied_version = await self.weight_syncer.apply(self.hf_model, recv_func)
+
+        # TODO(agent): MODELOPT-PROPOSAL R2 (comments only).
+        # Before publishing self.version, finalize scales/provider metadata and
+        # refresh any real-GEMM caches for this complete snapshot. Do not mutate
+        # an async rollout's active policy in place without a version barrier.
+        # TODO(agent): Exact cache-refresh API and graph compatibility are open;
+        # tensor weight sync alone does not establish quantized-policy identity.
         self.version = applied_version
         if self.finished_episodes is None:
             self.finished_episodes = (

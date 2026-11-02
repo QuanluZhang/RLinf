@@ -28,6 +28,14 @@ RecvFn = Callable[[], Awaitable[Any]]
 
 
 class WeightSyncer(ABC):
+    # TODO(agent): MODELOPT-PROPOSAL W1 (comments only).
+    # Keep this transport provider-independent. A proposed snapshot envelope adds
+    # opaque provider metadata and recipe/scale revisions to the existing weight
+    # version. The precision adapter interprets metadata; syncers transfer it.
+    # Preserve scale-buffer dtypes and atomically finalize tensors + metadata.
+    # TODO(agent): Design the envelope for BOTH bucket and patch syncers before
+    # changing this interface; no new argument or transport behavior is added.
+
     def __init__(self):
         self._sender_initialized: bool = False
         self._receiver_initialized: bool = False

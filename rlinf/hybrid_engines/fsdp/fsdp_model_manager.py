@@ -289,6 +289,17 @@ class FSDPModelManager:
         """
         module = self.model_provider_func()
 
+        # TODO(agent): MODELOPT-PROPOSAL M1 (comments only).
+        # Before gradient-checkpoint setup, sync-name collection and FSDP:
+        # precision = ModelOptAdapter()  # lazy optional import
+        # if resume_checkpoint_dir:
+        #     module = precision.restore_structure(module, resume_checkpoint_dir)
+        # elif prepared_checkpoint:
+        #     module = precision.restore_prepared(module, prepared_checkpoint)
+        # Existing wrapping/optimizer creation follows unchanged. Validate
+        # converted module boundaries and preserve FP32 quantizer scale buffers.
+        # See proposals/modelopt_embodied_integration.md and the adapter sketch.
+
         # Enable gradient checkpointing if configured
         if self._cfg.fsdp_config.get("gradient_checkpointing", False):
             use_reentrant = self._cfg.fsdp_config.get(
@@ -383,6 +394,10 @@ class FSDPModelManager:
             self.load_optimizer(self.device)
             self.is_optimizer_offloaded = False
 
+        # TODO(agent): MODELOPT-PROPOSAL M2 (comments only).
+        # Restore ModelOpt structure in M1 BEFORE wrapping, then let this call
+        # restore model tensors (including scales), optimizer and scheduler.
+        # Restoring structure here would be too late for FSDP/optimizer setup.
         self._strategy.load_checkpoint(
             self.model, self.optimizer, self.lr_scheduler, load_path
         )
@@ -413,6 +428,12 @@ class FSDPModelManager:
             ),
         )
 
+        # TODO(agent): MODELOPT-PROPOSAL M3 (comments only).
+        # After distributed checkpoint save, a designated rank would call:
+        # precision.save_structure(self.model, save_path)
+        # This stores ModelOpt metadata; existing checkpoints retain tensors.
+        # TODO(agent): Validate collective requirements before rank-0-only
+        # metadata extraction; publish metadata/tensors as one checkpoint.
         if restore_weight_offload:
             self.offload_param_and_grad()
         if restore_optimizer_offload:
@@ -477,6 +498,12 @@ class FSDPModelManager:
             self.grad_scaler.step(optimizer=self.optimizer)
 
         self.grad_scaler.update()
+
+        # TODO(agent): MODELOPT-PROPOSAL M4 (comments only).
+        # After a confirmed successful optimizer update, invalidate precision
+        # weight/scale caches before the next forward or published snapshot.
+        # TODO(agent): No certified public ModelOpt cache-refresh API is chosen
+        # yet. Also distinguish GradScaler-skipped updates from successful ones.
 
         if self.critic_warmup_steps > 0:
             lr_list = [0.0 for _ in self.optimizer.param_groups]
