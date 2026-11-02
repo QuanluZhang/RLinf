@@ -160,13 +160,17 @@ class MultiStepRolloutWorker(Worker):
 
         self.hf_model: BasePolicy = get_model(rollout_model_config)
 
-        # TODO(agent): MODELOPT-PROPOSAL R1 (comments only).
-        # Before eval(), torch.compile or CUDA graph capture:
-        # precision = ModelOptAdapter()  # lazy optional import
-        # self.hf_model = precision.restore_prepared(
-        #     self.hf_model, rollout_precision.prepared_checkpoint)
-        # Use the actor's prepared recipe/scales initially; handle resumed and
-        # eval-only checkpoints explicitly and reject ambiguous ckpt_path input.
+        # MODELOPT-PROPOSAL R1: draft integration hook.
+        self.precision_adapter = None
+        precision_cfg = self.cfg.rollout.get("precision", {})
+        if precision_cfg.get("enabled", False):
+            from rlinf.models.precision.modelopt_adapter import ModelOptAdapter
+
+            self.precision_adapter = ModelOptAdapter()
+            self.precision_adapter.validate_training_contract()
+            self.hf_model = self.precision_adapter.restore_prepared(
+                self.hf_model, precision_cfg.prepared_checkpoint
+            )
 
         if self.cfg.runner.get("ckpt_path", None):
             model_dict = torch.load(self.cfg.runner.ckpt_path)
@@ -688,12 +692,9 @@ class MultiStepRolloutWorker(Worker):
 
         applied_version = await self.weight_syncer.apply(self.hf_model, recv_func)
 
-        # TODO(agent): MODELOPT-PROPOSAL R2 (comments only).
-        # Before publishing self.version, finalize scales/provider metadata and
-        # refresh any real-GEMM caches for this complete snapshot. Do not mutate
-        # an async rollout's active policy in place without a version barrier.
-        # TODO(agent): Exact cache-refresh API and graph compatibility are open;
-        # tensor weight sync alone does not establish quantized-policy identity.
+        # MODELOPT-PROPOSAL R2: draft integration hook.
+        if self.precision_adapter is not None:
+            self.precision_adapter.finalize_snapshot(self.hf_model, applied_version)
         self.version = applied_version
         if self.finished_episodes is None:
             self.finished_episodes = (

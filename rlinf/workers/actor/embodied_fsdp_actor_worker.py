@@ -125,11 +125,8 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
         if model is None:
             model = super().model_provider_func()
 
-        # TODO(agent): MODELOPT-PROPOSAL A1 (comments only).
-        # Resolve ordinary pretrained weights here; quantized prepared/resume
-        # state is restored in FSDPModelManager M1 before wrapping. Reject an
-        # ambiguous combination of runner.ckpt_path and a precision checkpoint;
-        # do not load quantized tensors into an unconverted model here.
+        # MODELOPT-PROPOSAL A1: draft integration hook.
+        # Ordinary weights load here; precision restoration occurs at M1.
         if self.cfg.runner.get("ckpt_path", None):
             model_dict = torch.load(self.cfg.runner.ckpt_path)
             model.load_state_dict(model_dict)
@@ -150,11 +147,10 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
 
         state_dict = self.get_rollout_state_dict()
 
-        # TODO(agent): MODELOPT-PROPOSAL A2 (comments only).
-        # Keep tensor transport in WeightSyncer. Snapshot identity should include
-        # weight version + recipe hash + scale revision + execution mode.
-        # Persistent quantizer buffers must be captured by sync-name collection;
-        # extra provider metadata needs a separately validated envelope (W1).
+        # MODELOPT-PROPOSAL A2: draft integration hook.
+        if self.precision_adapter is not None:
+            metadata = self.precision_adapter.snapshot_metadata(self.model)
+            self.weight_syncer.stage_precision_metadata(metadata)
 
         async def send_func(data):
             if not self._is_weight_sender:
@@ -766,11 +762,8 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
             self.cfg.algorithm.entropy_bonus > 0
             or self.cfg.algorithm.get("log_entropy_metrics", False)
         )
-        # TODO(agent): MODELOPT-PROPOSAL A3 (comments only).
-        # Existing forward -> RL loss -> backward operates on converted modules;
-        # no ModelOpt Trainer or separate quantize() call belongs in this loop.
-        # A future precision step context must span all microbatches AND backward
-        # recomputation; keep PPO/log-density/value reductions in FP32.
+        # MODELOPT-PROPOSAL A3: draft integration hook.
+        # Converted modules participate in the existing RL forward/loss/backward.
         with self.amp_context:
             output_dict = self.model(
                 forward_inputs=forward_inputs,

@@ -28,13 +28,11 @@ RecvFn = Callable[[], Awaitable[Any]]
 
 
 class WeightSyncer(ABC):
-    # TODO(agent): MODELOPT-PROPOSAL W1 (comments only).
-    # Keep this transport provider-independent. A proposed snapshot envelope adds
-    # opaque provider metadata and recipe/scale revisions to the existing weight
-    # version. The precision adapter interprets metadata; syncers transfer it.
-    # Preserve scale-buffer dtypes and atomically finalize tensors + metadata.
-    # TODO(agent): Design the envelope for BOTH bucket and patch syncers before
-    # changing this interface; no new argument or transport behavior is added.
+    # MODELOPT-PROPOSAL W1: draft integration hook.
+    def stage_precision_metadata(self, metadata: dict[str, Any]) -> None:
+        """Stage provider-independent metadata alongside a tensor snapshot."""
+        # TODO(agent): Implement atomic envelopes for bucket and patch syncers.
+        raise NotImplementedError("Precision metadata transport is draft scaffolding")
 
     def __init__(self):
         self._sender_initialized: bool = False

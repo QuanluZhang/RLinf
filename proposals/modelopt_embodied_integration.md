@@ -1,9 +1,10 @@
 # ModelOpt embodied low-precision integration: review-only proposal
 
-This draft places commented interface sketches at the intended integration
-points so reviewers can estimate scope. It implements no low-precision feature,
-adds no dependency or executable configuration, and changes no runtime behavior.
-The two new Python files contain comments only and are not runnable examples.
+This draft places Python interface scaffolding at the intended integration
+points. ModelOpt imports remain isolated in the adapter. Existing configurations
+leave the hooks disabled. Enabling precision.enabled explicitly fails at the
+training-contract gate until FSDP, cache and atomic snapshot work is completed.
+Offline preparation is a callback-driven interface example, not a validated tool.
 
 Base: `QuanluZhang/RLinf:main` at `39a89e3f68e2` (2 November 2026).
 ModelOpt API survey: [`d48a5450d70e`](https://github.com/NVIDIA/Model-Optimizer/tree/d48a5450d70e7ec4d9ea22bc6ce4d403fef37a12).
@@ -25,10 +26,9 @@ Search for `MODELOPT-PROPOSAL` to find every sketch in the diff.
 | W1 | [WeightSyncer](../rlinf/hybrid_engines/weight_syncer/base.py) | Provider-independent metadata envelope, exact scale dtypes and atomic activation. | Largest shared change: bucket and patch protocols both need validation. |
 | C1 | [Configuration validation](../rlinf/config.py), `validate_cfg` | Validate optional precision settings without altering storage dtype semantics. | Small validation surface; medium capability matrix. |
 
-This is eight review files: five existing files with comment-only annotations,
-two new comment-only interface sketches, and this proposal. A working feature
-would also require recipes, installation/Docker support, tests and user docs;
-those are deliberately outside this review-only diff.
+This is eight review files: five existing files with lifecycle hooks,
+two new Python interfaces, and this proposal. A working feature still requires
+recipes, installation/Docker support, tests and user docs.
 
 ## Actual ModelOpt calls and ordering
 
@@ -68,12 +68,14 @@ is introduced inside Ray workers. Core worker modules do not import ModelOpt.
 ```yaml
 actor:
   precision:
+    enabled: false
     prepared_checkpoint: /path/to/prepared_policy.pt
     resume_checkpoint_dir: null
     recipe_path: /path/to/openpi_fp8_safe_v1.yaml
     real_forward: false
 rollout:
   precision:
+    enabled: false
     prepared_checkpoint: /path/to/prepared_policy.pt
     real_forward: false
 ```
@@ -118,6 +120,7 @@ and precision checkpoint settings must be rejected explicitly.
 4. Add NVFP4 and callback-driven mixed-precision search on supported Blackwell
    hardware, then measure task quality and complete RL iteration performance.
 
-No GPU performance or convergence claim is made by this draft. Validation of
-this proposal consists of Python syntax checks, AST equality against the base
-for annotated files, empty ASTs for the two sketches and diff whitespace checks.
+No GPU performance or convergence claim is made. Python syntax and whitespace
+checks cover the draft. ModelOpt execution and GPU training remain untested;
+validate_training_contract deliberately blocks worker activation until the
+implementation gates above are completed.

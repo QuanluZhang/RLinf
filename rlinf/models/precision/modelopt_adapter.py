@@ -12,58 +12,84 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# MODELOPT-PROPOSAL P1: interface sketch only. Every line is a comment;
-# this file defines no class, imports no dependency and executes no code.
-# See proposals/modelopt_embodied_integration.md for call sites and open work.
-#
-# Proposed imports (only this adapter imports ModelOpt):
-# from modelopt.recipe import load_recipe
-# import modelopt.torch.opt as mto
-# import modelopt.torch.quantization as mtq
-# from modelopt.torch.quantization.config import CompressConfig
-#
-# class ModelOptAdapter:
-#     def prepare(self, model, recipe_path, calibration_loop,
-#                 real_forward=False):
-#         recipe = load_recipe(recipe_path)
-#         model = mtq.quantize(
-#             model, config=recipe.quantize, forward_loop=calibration_loop)
-#         if real_forward:
-#             mtq.compress(model, config=CompressConfig(
-#                 compress={"default": False}, quant_gemm=True))
-#         return model
-#
-#     def save_prepared(self, model, path):
-#         mto.save(model, path)  # structure + weights/scales, unwrapped model
-#
-#     def restore_prepared(self, model, path):
-#         return mto.restore(model, path, map_location="cpu")
-#
-#     def save_structure(self, model, checkpoint_dir):
-#         torch.save(mto.modelopt_state(model),
-#                    Path(checkpoint_dir) / "modelopt_state.pt")
-#
-#     def restore_structure(self, model, checkpoint_dir):
-#         return mto.restore_from_modelopt_state(
-#             model, modelopt_state_path=str(
-#                 Path(checkpoint_dir) / "modelopt_state.pt"))
-#
-# Optional mixed-precision preparation replaces mtq.quantize above:
-# model, search_state = mtq.auto_quantize(
-#     model,
-#     constraints={"effective_bits": 6.5},
-#     quantization_formats=[fp8_config, nvfp4_config],
-#     data_loader=trajectory_loader,
-#     forward_step=trajectory_forward,
-#     loss_func=trajectory_loss,
-#     disabled_layers=excluded_module_patterns,
-#     num_calib_steps=128,
-#     num_score_steps=64,
-# )
-# mto.save(model, prepared_checkpoint)
-#
-# TODO(agent): These calls were inspected at ModelOpt d48a5450d70e; certify
-# the supported public API/version tuple before implementation. Real GEMMs
-# retain higher-precision backward; packing trainable weights would freeze them.
-# TODO(agent): Select a public cache invalidation/finalize-snapshot contract;
-# no private quantizer attributes or invented ModelOpt methods are used here.
+"""Draft ModelOpt integration interfaces; distributed lifecycle is incomplete."""
+
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import torch
+from torch import nn
+
+
+class ModelOptAdapter:
+    """Isolate optional ModelOpt APIs from RL workers."""
+
+    def prepare(
+        self, model: nn.Module, recipe_path: str,
+        calibration_loop: Callable[[nn.Module], None], real_forward: bool = False,
+    ) -> nn.Module:
+        """Calibrate an unsharded model using a provider recipe."""
+        from modelopt.recipe import load_recipe
+        import modelopt.torch.quantization as mtq
+        from modelopt.torch.quantization.config import CompressConfig
+
+        recipe = load_recipe(recipe_path)
+        model = mtq.quantize(
+            model, config=recipe.quantize, forward_loop=calibration_loop
+        )
+        if real_forward:
+            mtq.compress(model, config=CompressConfig(
+                compress={"default": False}, quant_gemm=True
+            ))
+        return model
+
+    def search_mixed_precision(self, model: nn.Module, **kwargs: Any) -> Any:
+        """Search formats with caller-supplied trajectory/loss callbacks."""
+        import modelopt.torch.quantization as mtq
+
+        return mtq.auto_quantize(model, **kwargs)
+
+    def save_prepared(self, model: nn.Module, path: str) -> None:
+        """Save provider structure and unsharded tensors."""
+        import modelopt.torch.opt as mto
+
+        mto.save(model, path)
+
+    def restore_prepared(self, model: nn.Module, path: str) -> nn.Module:
+        """Restore before FSDP wrapping or compilation."""
+        import modelopt.torch.opt as mto
+
+        return mto.restore(model, path, map_location="cpu")
+
+    def save_structure(self, model: nn.Module, checkpoint_dir: str) -> None:
+        """Save provider metadata beside distributed tensors."""
+        import modelopt.torch.opt as mto
+
+        torch.save(mto.modelopt_state(model), Path(checkpoint_dir) / "modelopt_state.pt")
+
+    def restore_structure(self, model: nn.Module, checkpoint_dir: str) -> nn.Module:
+        """Restore structure before distributed checkpoint loading."""
+        import modelopt.torch.opt as mto
+
+        return mto.restore_from_modelopt_state(
+            model, modelopt_state_path=str(Path(checkpoint_dir) / "modelopt_state.pt")
+        )
+
+    def validate_training_contract(self) -> None:
+        """Block activation until distributed lifecycle contracts are validated."""
+        # TODO(agent): Certify FSDP, versions, scale sync and cache contracts.
+        raise NotImplementedError("ModelOpt RL training is draft scaffolding only")
+
+    def after_optimizer_step(self, model: nn.Module) -> None:
+        """Invalidate caches after a confirmed successful optimizer update."""
+        # TODO(agent): Select a public provider API and handle skipped updates.
+        raise NotImplementedError("Cache invalidation contract is unresolved")
+
+    def snapshot_metadata(self, model: nn.Module) -> dict[str, Any]:
+        """Return recipe, scale revision and execution mode for a snapshot."""
+        raise NotImplementedError("Precision snapshot metadata is unresolved")
+
+    def finalize_snapshot(self, model: nn.Module, version: int) -> None:
+        """Finalize provider state before activating a received version."""
+        raise NotImplementedError("Atomic snapshot activation is unresolved")

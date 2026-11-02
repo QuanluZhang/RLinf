@@ -1775,14 +1775,17 @@ def adv_requires_group_baseline(
 
 
 def validate_cfg(cfg: DictConfig) -> DictConfig:
-    # TODO(agent): MODELOPT-PROPOSAL C1 (comments only).
-    # Validate optional actor.precision / rollout.precision before workers start:
-    # prepared_checkpoint, resume_checkpoint_dir, recipe_path, real_forward.
-    # Check matching actor/rollout recipes, dependency versions, GPU/kernel
-    # coverage and incompatible checkpoint inputs; leave user settings read-only.
-    # Execution precision is separate from model storage/FSDP communication
-    # dtype. Do not add fp4 as an ordinary global model dtype or combine ModelOpt
-    # quantization with active TE low-precision autocast on the same modules.
+    # MODELOPT-PROPOSAL C1: draft integration hook.
+    for component in ("actor", "rollout"):
+        precision = OmegaConf.select(cfg, f"{component}.precision", default=None)
+        if precision is not None and precision.get("enabled", False):
+            if cfg.runner.get("ckpt_path"):
+                raise ValueError("precision checkpoint conflicts with runner.ckpt_path")
+            if not (
+                precision.get("prepared_checkpoint") or
+                precision.get("resume_checkpoint_dir")
+            ):
+                raise ValueError("ModelOpt requires a prepared or resume checkpoint")
     OmegaConf.set_struct(cfg, True)
 
     with open_dict(cfg):
