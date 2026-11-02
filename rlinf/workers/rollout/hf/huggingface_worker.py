@@ -160,6 +160,18 @@ class MultiStepRolloutWorker(Worker):
 
         self.hf_model: BasePolicy = get_model(rollout_model_config)
 
+        # MODELOPT-PROPOSAL R1: draft integration hook.
+        self.precision_adapter = None
+        precision_cfg = self.cfg.rollout.get("precision", {})
+        if precision_cfg.get("enabled", False):
+            from rlinf.models.precision.modelopt_adapter import ModelOptAdapter
+
+            self.precision_adapter = ModelOptAdapter()
+            self.precision_adapter.validate_training_contract()
+            self.hf_model = self.precision_adapter.restore_prepared(
+                self.hf_model, precision_cfg.prepared_checkpoint
+            )
+
         if self.cfg.runner.get("ckpt_path", None):
             model_dict = torch.load(self.cfg.runner.ckpt_path)
             self.hf_model.load_state_dict(model_dict)
@@ -679,6 +691,10 @@ class MultiStepRolloutWorker(Worker):
             )
 
         applied_version = await self.weight_syncer.apply(self.hf_model, recv_func)
+
+        # MODELOPT-PROPOSAL R2: draft integration hook.
+        if self.precision_adapter is not None:
+            self.precision_adapter.finalize_snapshot(self.hf_model, applied_version)
         self.version = applied_version
         if self.finished_episodes is None:
             self.finished_episodes = (

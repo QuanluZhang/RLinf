@@ -125,6 +125,8 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
         if model is None:
             model = super().model_provider_func()
 
+        # MODELOPT-PROPOSAL A1: draft integration hook.
+        # Ordinary weights load here; precision restoration occurs at M1.
         if self.cfg.runner.get("ckpt_path", None):
             model_dict = torch.load(self.cfg.runner.ckpt_path)
             model.load_state_dict(model_dict)
@@ -144,6 +146,11 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
                 self.load_param_and_grad(self.device, False)
 
         state_dict = self.get_rollout_state_dict()
+
+        # MODELOPT-PROPOSAL A2: draft integration hook.
+        if self.precision_adapter is not None:
+            metadata = self.precision_adapter.snapshot_metadata(self.model)
+            self.weight_syncer.stage_precision_metadata(metadata)
 
         async def send_func(data):
             if not self._is_weight_sender:
@@ -755,6 +762,8 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
             self.cfg.algorithm.entropy_bonus > 0
             or self.cfg.algorithm.get("log_entropy_metrics", False)
         )
+        # MODELOPT-PROPOSAL A3: draft integration hook.
+        # Converted modules participate in the existing RL forward/loss/backward.
         with self.amp_context:
             output_dict = self.model(
                 forward_inputs=forward_inputs,

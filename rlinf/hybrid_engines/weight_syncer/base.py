@@ -28,6 +28,12 @@ RecvFn = Callable[[], Awaitable[Any]]
 
 
 class WeightSyncer(ABC):
+    # MODELOPT-PROPOSAL W1: draft integration hook.
+    def stage_precision_metadata(self, metadata: dict[str, Any]) -> None:
+        """Stage provider-independent metadata alongside a tensor snapshot."""
+        # TODO(agent): Implement atomic envelopes for bucket and patch syncers.
+        raise NotImplementedError("Precision metadata transport is draft scaffolding")
+
     def __init__(self):
         self._sender_initialized: bool = False
         self._receiver_initialized: bool = False

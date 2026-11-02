@@ -289,6 +289,23 @@ class FSDPModelManager:
         """
         module = self.model_provider_func()
 
+        # MODELOPT-PROPOSAL M1: draft integration hook.
+        self.precision_adapter = None
+        precision_cfg = self._cfg.get("precision", {})
+        if precision_cfg.get("enabled", False):
+            from rlinf.models.precision.modelopt_adapter import ModelOptAdapter
+
+            self.precision_adapter = ModelOptAdapter()
+            self.precision_adapter.validate_training_contract()
+            if precision_cfg.get("resume_checkpoint_dir"):
+                module = self.precision_adapter.restore_structure(
+                    module, precision_cfg.resume_checkpoint_dir
+                )
+            else:
+                module = self.precision_adapter.restore_prepared(
+                    module, precision_cfg.prepared_checkpoint
+                )
+
         # Enable gradient checkpointing if configured
         if self._cfg.fsdp_config.get("gradient_checkpointing", False):
             use_reentrant = self._cfg.fsdp_config.get(
@@ -383,6 +400,8 @@ class FSDPModelManager:
             self.load_optimizer(self.device)
             self.is_optimizer_offloaded = False
 
+        # MODELOPT-PROPOSAL M2: draft integration hook.
+        # Structure restoration occurs in M1 before FSDP wrapping.
         self._strategy.load_checkpoint(
             self.model, self.optimizer, self.lr_scheduler, load_path
         )
@@ -413,6 +432,10 @@ class FSDPModelManager:
             ),
         )
 
+        # MODELOPT-PROPOSAL M3: draft integration hook.
+        if self.precision_adapter is not None:
+            # TODO(agent): Validate collective extraction and atomic save publication.
+            self.precision_adapter.save_structure(self.model, save_path)
         if restore_weight_offload:
             self.offload_param_and_grad()
         if restore_optimizer_offload:
@@ -477,6 +500,10 @@ class FSDPModelManager:
             self.grad_scaler.step(optimizer=self.optimizer)
 
         self.grad_scaler.update()
+
+        # MODELOPT-PROPOSAL M4: draft integration hook.
+        if self.precision_adapter is not None:
+            self.precision_adapter.after_optimizer_step(self.model)
 
         if self.critic_warmup_steps > 0:
             lr_list = [0.0 for _ in self.optimizer.param_groups]

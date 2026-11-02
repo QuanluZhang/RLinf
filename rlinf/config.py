@@ -1775,6 +1775,17 @@ def adv_requires_group_baseline(
 
 
 def validate_cfg(cfg: DictConfig) -> DictConfig:
+    # MODELOPT-PROPOSAL C1: draft integration hook.
+    for component in ("actor", "rollout"):
+        precision = OmegaConf.select(cfg, f"{component}.precision", default=None)
+        if precision is not None and precision.get("enabled", False):
+            if cfg.runner.get("ckpt_path"):
+                raise ValueError("precision checkpoint conflicts with runner.ckpt_path")
+            if not (
+                precision.get("prepared_checkpoint") or
+                precision.get("resume_checkpoint_dir")
+            ):
+                raise ValueError("ModelOpt requires a prepared or resume checkpoint")
     OmegaConf.set_struct(cfg, True)
 
     with open_dict(cfg):
