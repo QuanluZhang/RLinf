@@ -100,7 +100,7 @@ class SocketKeySource:
             connected = self._conn is not None and (
                 time.monotonic() - self._last_msg <= self.heartbeat_timeout
             )
-            return connected, set(self._pressed)
+            return connected, set(self._pressed) if connected else set()
 
     def _serve(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
@@ -122,13 +122,19 @@ class SocketKeySource:
             self._conn = conn
             self._pressed.clear()
             self._last_msg = time.monotonic()
-        conn.settimeout(0.5)
+        conn.settimeout(min(0.5, self.heartbeat_timeout))
         buffer = b""
         try:
             while not self._stop.is_set():
                 try:
                     data = conn.recv(4096)
                 except socket.timeout:
+                    with self._lock:
+                        expired = (
+                            time.monotonic() - self._last_msg > self.heartbeat_timeout
+                        )
+                    if expired:
+                        break
                     continue
                 except OSError:
                     break

@@ -318,9 +318,8 @@ under the key ``main_image_key`` points at; a camera left unnamed reports under
 
 ``frame_size`` sets the width and height of every frame in the observation, 128
 by 128 pixels by default. A policy usually wants a small frame; a live viewer
-wants a larger one. The camera driver asks the device for that size and resizes
-in software when the device cannot deliver it, so pick a resolution the camera
-supports natively.
+wants a larger one. The camera captures at its native resolution, and the
+environment centre-crops and resizes each frame to ``frame_size``.
 
 The reward is always zero and the episode never terminates early: a task
 decides success itself, as

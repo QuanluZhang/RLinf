@@ -224,6 +224,15 @@ def test_lekiwi_step_drives_for_one_period_then_stops():
             observation, *_ = env.step(np.array([9.0, 9.0, 900.0]))
             limits = np.array([0.5, 0.5, 90.0])
             assert np.all(np.abs(observation["state"]["velocity"]) <= limits + 1e-6)
+
+            # A failure during observation reading must still stop the wheels.
+            made["lerobot.motors.feetech"].FeetechMotorsBus.fail_read = True
+            try:
+                with pytest.raises(OSError, match="simulated read failure"):
+                    env.step(np.array([0.1, 0.0, 0.0]))
+            finally:
+                made["lerobot.motors.feetech"].FeetechMotorsBus.fail_read = False
+            assert not any(bus.velocity.values())
         finally:
             env.close()
         assert not bus.is_connected

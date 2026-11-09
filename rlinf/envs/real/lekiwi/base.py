@@ -237,17 +237,19 @@ class LeKiwiEnv(gym.Env):
         if not self.config.is_dummy:
             self.robot.send_action({"base": {"velocity": action}})
         self._num_steps += 1
-
-        # Hold the command for the rest of the control period before reading
-        # the wheels, so the observation measures the commanded motion.
-        remaining = 1.0 / self.config.step_frequency - (time.monotonic() - start_time)
-        time.sleep(max(0.0, remaining))
-        observation = self._get_observation()
-
-        # The step is over: stop the wheels before returning, so a policy
-        # that stops stepping stops the base.
-        if not self.config.is_dummy:
-            self._base.reset()
+        try:
+            # Hold the command for the rest of the control period before reading
+            # the wheels, so the observation measures the commanded motion.
+            remaining = 1.0 / self.config.step_frequency - (
+                time.monotonic() - start_time
+            )
+            time.sleep(max(0.0, remaining))
+            observation = self._get_observation()
+        finally:
+            # The step is over: stop the wheels before returning, so a policy
+            # that stops stepping or a failed observation read stops the base.
+            if not self.config.is_dummy:
+                self._base.reset()
 
         truncated = self._num_steps >= self.config.max_num_steps
         return observation, 0.0, False, truncated, {}
@@ -310,7 +312,6 @@ class LeKiwiEnv(gym.Env):
                 name=name,
                 serial_number=str(serial),
                 camera_type=camera_type,
-                resolution=self.config.frame_size,
             )
             for name, serial in zip(
                 self._frame_names(), self.hardware.camera_serials or [], strict=True
@@ -342,21 +343,11 @@ class LeKiwiEnv(gym.Env):
             # Cameras deliver their native resolution; the space fixes one.
             size = declared[name].shape[:2][::-1]
             try:
-                frame = camera.get_frame(max_age=self.config.camera_max_age)
-            except queue.Empty:
-                self._logger.warning(
-                    "Camera %s is not producing frames; reopening it.", name
-                )
-                time.sleep(5)
-                # Reopen this camera rather than rebuilding the declarations,
-                # which would drop the placement the robot gave it.
-                camera.reopen()
-                try:
-                    frame = camera.get_frame(max_age=self.config.camera_max_age)
-                except queue.Empty as exc:
-                    raise RuntimeError(
-                        f"Camera {name} still delivers no frame after reopening."
-                    ) from exc
+                frame = camera.get_frame(attempts=2, max_age=self.config.camera_max_age)
+            except queue.Empty as exc:
+                raise RuntimeError(
+                    f"Camera {name} still delivers no frame after reopening."
+                ) from exc
             frames[name] = crop_and_resize(frame, size)
 
         if hasattr(self, "camera_player"):
