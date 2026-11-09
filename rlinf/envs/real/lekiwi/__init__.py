@@ -21,7 +21,7 @@ from rlinf.envs.real.registry import register_tasks
 from .base import LeKiwiEnv, LeKiwiEnvConfig
 from .drive import LeKiwiDriveEnv
 
-TASKS = {"LeKiwiDriveEnv": LeKiwiDriveEnv}
+TASKS = {"LeKiwiDriveEnv-v1": LeKiwiDriveEnv}
 
 _ENTRY_POINTS = register_tasks(__name__, globals(), TASKS)
 

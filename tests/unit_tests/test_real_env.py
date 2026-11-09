@@ -277,11 +277,11 @@ def test_lekiwi_camera_keeps_object_proportions(monkeypatch, frame_size):
             env.close()
 
 
-def test_lekiwi_registers_the_unversioned_task():
+def test_lekiwi_registers_the_versioned_task():
     from rlinf.envs.real import lekiwi
 
-    spec = gym.spec("LeKiwiDriveEnv")
-    assert spec.version is None
+    spec = gym.spec("LeKiwiDriveEnv-v1")
+    assert spec.version == 1
     assert spec.entry_point == f"{lekiwi.__name__}:create_LeKiwiDriveEnv"
 
 

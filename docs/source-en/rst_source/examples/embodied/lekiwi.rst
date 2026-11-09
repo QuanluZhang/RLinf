@@ -2,7 +2,7 @@ LeKiwi Mobile Base Setup and Control
 ====================================
 
 This page takes a LeKiwi omnidirectional base and its front camera from the
-box to a running ``LeKiwiDriveEnv`` environment. It installs the environment,
+box to a running ``LeKiwiDriveEnv-v1`` environment. It installs the environment,
 numbers the wheel motors, checks each part with one command, and then shows the
 config that hands the base to a policy or a controller.
 
@@ -47,7 +47,7 @@ only per-wheel velocities reach the hardware. RLinf converts a body velocity
 wheel by the same factor when one would exceed its limit, so a direction the
 base cannot reach at full speed runs slower but still in a straight line. The
 robotics layer composes ``LeKiwiRobot`` from the base and the cameras; the env
-layer wraps that robot as ``LeKiwiDriveEnv``. Each part's observation and
+layer wraps that robot as ``LeKiwiDriveEnv-v1``. Each part's observation and
 action contracts are in :doc:`Robotics Interface
 </rst_source/concepts/robotics>`.
 
@@ -258,7 +258,7 @@ sender connects and sends heartbeats, but no key reaches the robot.
 The drive environment
 ---------------------
 
-``LeKiwiDriveEnv`` is the registered Gymnasium task: it composes the robot from
+``LeKiwiDriveEnv-v1`` is the registered Gymnasium task: it composes the robot from
 the hardware config, reports the measured body velocity and camera frames, and
 commands bounded velocities. A step holds the commanded velocity for one
 control period and then stops the wheels, so the base moves only while the
@@ -277,7 +277,7 @@ same shape:
    main_image_key: front
 
    init_params:
-     id: "LeKiwiDriveEnv"
+     id: "LeKiwiDriveEnv-v1"
      num_envs: null
 
 The port, the cameras, and the wheel geometry come from the hardware block of
